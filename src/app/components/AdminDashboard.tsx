@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { User } from '../App';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
@@ -7,9 +7,11 @@ import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Calendar as CalendarIcon, TrendingUp, Users, CheckCircle, Percent } from 'lucide-react';
-import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { supabase } from '@/lib/supabase';
+import { toast } from 'sonner';
 
 interface AdminDashboardProps {
   user: User;
@@ -20,6 +22,8 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
   const [dateFrom, setDateFrom] = useState<Date>(today);
   const [dateTo, setDateTo] = useState<Date>(today);
   const [quickRange, setQuickRange] = useState('today');
+  const [loading, setLoading] = useState(false);
+  const [entries, setEntries] = useState<any[]>([]);
 
   const handleQuickRange = (range: string) => {
     setQuickRange(range);
@@ -40,42 +44,126 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
     }
   };
 
-  // Mock data
-  const kpiData = {
-    totalRegistered: 248,
-    totalCheckedIn: 195,
-    checkInRate: 78.6,
-    freeGuests: 180,
-    paidGuests: 68
-  };
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      try {
+        setLoading(true);
+        const startDate = format(dateFrom, 'yyyy-MM-dd');
+        const endDate = format(dateTo, 'yyyy-MM-dd');
 
-  const hourlyData = [
-    { hour: '22:00', count: 12 },
-    { hour: '23:00', count: 28 },
-    { hour: '00:00', count: 45 },
-    { hour: '01:00', count: 38 },
-    { hour: '02:00', count: 32 },
-    { hour: '03:00', count: 25 },
-    { hour: '04:00', count: 15 }
-  ];
+        const { data, error } = await supabase
+          .from('guest_entries')
+          .select(
+            `
+            id,
+            status,
+            guest_type,
+            business_date,
+            checked_in_at,
+            created_by,
+            created_by_profile:profiles!guest_entries_created_by_fkey (
+              display_name,
+              username
+            )
+          `,
+          )
+          .eq('club_id', user.clubId)
+          .gte('business_date', startDate)
+          .lte('business_date', endDate);
 
-  const dailyData = [
-    { date: '01/25', registered: 35, checkedIn: 28 },
-    { date: '01/26', registered: 42, checkedIn: 38 },
-    { date: '01/27', registered: 28, checkedIn: 22 },
-    { date: '01/28', registered: 48, checkedIn: 40 },
-    { date: '01/29', registered: 38, checkedIn: 30 },
-    { date: '01/30', registered: 32, checkedIn: 25 },
-    { date: '01/31', registered: 25, checkedIn: 12 }
-  ];
+        if (error) throw error;
 
-  const creatorData = [
-    { name: 'admin', registered: 45, checkedIn: 38, rate: 84.4 },
-    { name: 'dj_martin', registered: 68, checkedIn: 55, rate: 80.9 },
-    { name: 'promoter_kim', registered: 85, checkedIn: 70, rate: 82.4 },
-    { name: 'staff_john', registered: 32, checkedIn: 22, rate: 68.8 },
-    { name: 'external_event1', registered: 18, checkedIn: 10, rate: 55.6 }
-  ];
+        setEntries(data || []);
+      } catch (error) {
+        console.error('Error fetching dashboard:', error);
+        toast.error('대시보드 데이터를 불러오지 못했습니다.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboard();
+  }, [dateFrom, dateTo, user.clubId]);
+
+  const kpiData = useMemo(() => {
+    const totalRegistered = entries.length;
+    const totalCheckedIn = entries.filter((entry) => entry.status === 'CHECKED_IN').length;
+    const freeGuests = entries.filter((entry) => entry.guest_type === 'FREE').length;
+    const paidGuests = entries.filter((entry) => entry.guest_type === 'PAID').length;
+    const checkInRate = totalRegistered
+      ? Number(((totalCheckedIn / totalRegistered) * 100).toFixed(1))
+      : 0;
+
+    return { totalRegistered, totalCheckedIn, checkInRate, freeGuests, paidGuests };
+  }, [entries]);
+
+  const hourlyData = useMemo(() => {
+    const startHour = 21;
+    const cutoffHour = Number.isFinite(user.cutoffHour) ? user.cutoffHour : 6;
+    const displayHours: number[] = [];
+
+    for (let hour = startHour; hour < 24; hour += 1) {
+      displayHours.push(hour);
+    }
+    for (let hour = 0; hour <= cutoffHour; hour += 1) {
+      displayHours.push(hour);
+    }
+
+    const counts = new Map<number, number>();
+    displayHours.forEach((hour) => counts.set(hour, 0));
+
+    entries.forEach((entry) => {
+      if (!entry.checked_in_at) return;
+      const hour = new Date(entry.checked_in_at).getHours();
+      if (!counts.has(hour)) return;
+      counts.set(hour, (counts.get(hour) || 0) + 1);
+    });
+
+    return displayHours.map((hour) => ({
+      hour: `${hour.toString().padStart(2, '0')}:00`,
+      count: counts.get(hour) || 0,
+    }));
+  }, [entries, user.cutoffHour]);
+
+  const dailyData = useMemo(() => {
+    const days = eachDayOfInterval({ start: dateFrom, end: dateTo });
+    return days.map((day) => {
+      const businessDate = format(day, 'yyyy-MM-dd');
+      const dayEntries = entries.filter((entry) => entry.business_date === businessDate);
+      const registered = dayEntries.length;
+      const checkedIn = dayEntries.filter((entry) => entry.status === 'CHECKED_IN').length;
+      return {
+        date: format(day, 'MM/dd'),
+        registered,
+        checkedIn,
+      };
+    });
+  }, [dateFrom, dateTo, entries]);
+
+  const creatorData = useMemo(() => {
+    const map = new Map<string, { name: string; registered: number; checkedIn: number }>();
+    entries.forEach((entry) => {
+      const name =
+        entry.created_by_profile?.display_name ||
+        entry.created_by_profile?.username ||
+        entry.created_by ||
+        '알 수 없음';
+      const current = map.get(name) || { name, registered: 0, checkedIn: 0 };
+      current.registered += 1;
+      if (entry.status === 'CHECKED_IN') {
+        current.checkedIn += 1;
+      }
+      map.set(name, current);
+    });
+    return Array.from(map.values())
+      .map((creator) => ({
+        ...creator,
+        rate: creator.registered
+          ? Number(((creator.checkedIn / creator.registered) * 100).toFixed(1))
+          : 0,
+      }))
+      .sort((a, b) => b.registered - a.registered);
+  }, [entries]);
 
   return (
     <div className="p-4 lg:p-8 max-w-7xl mx-auto">
@@ -191,10 +279,16 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
           </div>
           <div className="text-3xl mb-1">{kpiData.freeGuests}/{kpiData.paidGuests}</div>
           <div className="text-xs text-muted-foreground">
-            무료 {((kpiData.freeGuests / kpiData.totalRegistered) * 100).toFixed(0)}%
+            무료 {kpiData.totalRegistered ? Math.round((kpiData.freeGuests / kpiData.totalRegistered) * 100) : 0}%
           </div>
         </Card>
       </div>
+
+      {loading && (
+        <Card className="p-6 mb-6 text-center text-muted-foreground">
+          데이터를 불러오는 중입니다...
+        </Card>
+      )}
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -202,12 +296,33 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
         <Card className="p-6">
           <h3 className="mb-4">시간대별 입장</h3>
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={hourlyData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="hour" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="count" fill="hsl(var(--primary))" name="입장 수" />
+            <BarChart data={hourlyData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="checkinGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#22c55e" stopOpacity={0.9} />
+                  <stop offset="100%" stopColor="#16a34a" stopOpacity={0.4} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="4 6" stroke="rgba(255,255,255,0.08)" />
+              <XAxis dataKey="hour" tick={{ fill: '#a1a1aa', fontSize: 12 }} tickLine={false} axisLine={false} />
+              <YAxis
+                tick={{ fill: '#a1a1aa', fontSize: 12 }}
+                tickLine={false}
+                axisLine={false}
+                allowDecimals={false}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: '#0f172a',
+                  border: '1px solid rgba(148,163,184,0.2)',
+                  borderRadius: 12,
+                  color: '#e2e8f0',
+                }}
+                labelStyle={{ color: '#cbd5f5' }}
+                formatter={(value: number) => [`${value}명`, '입장 수']}
+                cursor={false}
+              />
+              <Bar dataKey="count" fill="url(#checkinGradient)" radius={[8, 8, 4, 4]} />
             </BarChart>
           </ResponsiveContainer>
         </Card>
@@ -216,14 +331,48 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
         <Card className="p-6">
           <h3 className="mb-4">일별 추이</h3>
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={dailyData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="date" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="registered" stroke="hsl(var(--primary))" name="등록" strokeWidth={2} />
-              <Line type="monotone" dataKey="checkedIn" stroke="#10b981" name="입장" strokeWidth={2} />
+            <LineChart data={dailyData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="4 6" stroke="rgba(255,255,255,0.08)" />
+              <XAxis dataKey="date" tick={{ fill: '#a1a1aa', fontSize: 12 }} tickLine={false} axisLine={false} />
+              <YAxis
+                tick={{ fill: '#a1a1aa', fontSize: 12 }}
+                tickLine={false}
+                axisLine={false}
+                allowDecimals={false}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: '#0f172a',
+                  border: '1px solid rgba(148,163,184,0.2)',
+                  borderRadius: 12,
+                  color: '#e2e8f0',
+                }}
+                labelStyle={{ color: '#cbd5f5' }}
+                formatter={(value: number, name: string) => [
+                  `${value}명`,
+                  name === '등록' ? '등록' : name === '입장' ? '입장' : name,
+                ]}
+                cursor={false}
+              />
+              <Legend iconType="circle" />
+              <Line
+                type="monotone"
+                dataKey="registered"
+                stroke="#60a5fa"
+                name="등록"
+                strokeWidth={2}
+                dot={{ r: 3, stroke: '#60a5fa', strokeWidth: 2, fill: '#0f172a' }}
+                activeDot={{ r: 5 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="checkedIn"
+                stroke="#34d399"
+                name="입장"
+                strokeWidth={2}
+                dot={{ r: 3, stroke: '#34d399', strokeWidth: 2, fill: '#0f172a' }}
+                activeDot={{ r: 5 }}
+              />
             </LineChart>
           </ResponsiveContainer>
         </Card>
