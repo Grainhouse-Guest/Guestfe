@@ -18,14 +18,14 @@ const badgeVariants = cva(
         // Status badges - Subtle professional colors
         free: "bg-emerald-500/10 text-emerald-400",
         paid: "bg-amber-500/10 text-amber-400",
-        checked: "bg-cyan-500/10 text-cyan-400",
-        registered: "bg-zinc-500/10 text-zinc-400",
+        checked: "bg-cyan-500/10 text-primary",
+        registered: "bg-zinc-500/10 text-muted-foreground",
         // Role badges - Clean minimal
         admin: "bg-purple-500/10 text-purple-400",
         staff: "bg-blue-500/10 text-blue-400",
         dj: "bg-pink-500/10 text-pink-400",
         promoter: "bg-orange-500/10 text-orange-400",
-        external: "bg-indigo-500/10 text-indigo-400",
+        external: "bg-secondary/10 text-indigo-400",
       },
     },
     defaultVariants: {

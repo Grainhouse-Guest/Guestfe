@@ -80,15 +80,15 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           <div className="mt-8 pt-6 border-t border-border">
             <p className="text-xs text-muted-foreground mb-3">데모 계정</p>
             <div className="space-y-1.5 text-xs">
-              <div className="flex items-center justify-between px-3 py-2 rounded-md bg-muted/50">
+              <div className="flex items-center justify-between px-3 py-2 rounded-md bg-accent/50">
                 <span className="text-muted-foreground">관리자</span>
                 <code className="text-foreground font-mono">admin</code>
               </div>
-              <div className="flex items-center justify-between px-3 py-2 rounded-md bg-muted/50">
+              <div className="flex items-center justify-between px-3 py-2 rounded-md bg-accent/50">
                 <span className="text-muted-foreground">스태프</span>
                 <code className="text-foreground font-mono">staff</code>
               </div>
-              <div className="flex items-center justify-between px-3 py-2 rounded-md bg-muted/50">
+              <div className="flex items-center justify-between px-3 py-2 rounded-md bg-accent/50">
                 <span className="text-muted-foreground">DJ</span>
                 <code className="text-foreground font-mono">dj</code>
               </div>

@@ -166,7 +166,7 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
         <Card className="p-6">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-muted-foreground">총 입장</span>
-            <CheckCircle className="w-5 h-5 text-green-500" />
+            <CheckCircle className="w-5 h-5 text-success" />
           </div>
           <div className="text-3xl mb-1">{kpiData.totalCheckedIn}</div>
           <div className="text-xs text-muted-foreground">명</div>

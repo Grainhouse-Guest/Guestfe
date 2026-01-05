@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { User } from '../App';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -9,11 +9,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Switch } from './ui/switch';
+import { supabase } from '@/lib/supabase';
 import { ChevronLeft, ChevronRight, Plus, Search, Edit, Trash2, Calendar as CalendarIcon, Filter } from 'lucide-react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { toast } from 'sonner';
-import { Users } from 'lucide-react';
+import {
+  DEFAULT_CUTOFF_HOUR,
+  DEFAULT_CUTOFF_MINUTE,
+  getBusinessDateFor,
+} from '@/lib/business-date';
 
 interface Guest {
   id: string;
@@ -21,6 +26,7 @@ interface Guest {
   phone?: string;
   type: 'FREE' | 'PAID';
   status: 'REGISTERED' | 'CHECKED_IN';
+  creatorId?: string;
   createdBy: string;
   businessDate: string;
   checkedInAt?: string;
@@ -30,85 +36,20 @@ interface GuestsPageProps {
   user: User;
 }
 
+const GUESTS_TABLE = 'guest_entries';
+
 export function GuestsPage({ user }: GuestsPageProps) {
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(() =>
+    getBusinessDateFor(
+      new Date(),
+      user.cutoffHour ?? DEFAULT_CUTOFF_HOUR,
+      user.cutoffMinute ?? DEFAULT_CUTOFF_MINUTE,
+    ),
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'ALL' | 'FREE' | 'PAID'>('ALL');
-  const [guests, setGuests] = useState<Guest[]>([
-    {
-      id: '1',
-      name: '김민수',
-      phone: '010-1234-5678',
-      type: 'FREE',
-      status: 'REGISTERED',
-      createdBy: 'admin',
-      businessDate: format(new Date(), 'yyyy-MM-dd')
-    },
-    {
-      id: '2',
-      name: '이지은',
-      phone: '010-9876-5432',
-      type: 'PAID',
-      status: 'CHECKED_IN',
-      createdBy: 'dj_martin',
-      businessDate: format(new Date(), 'yyyy-MM-dd'),
-      checkedInAt: '2026-01-01T23:30:00'
-    },
-    {
-      id: '3',
-      name: '박서준',
-      phone: '010-5555-1234',
-      type: 'FREE',
-      status: 'REGISTERED',
-      createdBy: 'promoter_kim',
-      businessDate: format(new Date(), 'yyyy-MM-dd')
-    },
-    {
-      id: '4',
-      name: '최유진',
-      phone: '010-1111-2222',
-      type: 'PAID',
-      status: 'REGISTERED',
-      createdBy: 'admin',
-      businessDate: format(new Date(), 'yyyy-MM-dd')
-    },
-    {
-      id: '5',
-      name: '정해인',
-      type: 'FREE',
-      status: 'CHECKED_IN',
-      createdBy: 'staff_john',
-      businessDate: format(new Date(), 'yyyy-MM-dd'),
-      checkedInAt: '2026-01-01T22:15:00'
-    },
-    {
-      id: '6',
-      name: '송혜교',
-      phone: '010-7777-8888',
-      type: 'PAID',
-      status: 'CHECKED_IN',
-      createdBy: 'dj_martin',
-      businessDate: format(new Date(), 'yyyy-MM-dd'),
-      checkedInAt: '2026-01-01T23:45:00'
-    },
-    {
-      id: '7',
-      name: '강동원',
-      phone: '010-3333-4444',
-      type: 'FREE',
-      status: 'REGISTERED',
-      createdBy: 'promoter_kim',
-      businessDate: format(new Date(), 'yyyy-MM-dd')
-    },
-    {
-      id: '8',
-      name: '한소희',
-      type: 'FREE',
-      status: 'REGISTERED',
-      createdBy: 'dj_martin',
-      businessDate: format(new Date(), 'yyyy-MM-dd')
-    }
-  ]);
+  const [guests, setGuests] = useState<Guest[]>([]);
+  const [loading, setLoading] = useState(false);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingGuest, setEditingGuest] = useState<Guest | null>(null);
 
@@ -121,6 +62,54 @@ export function GuestsPage({ user }: GuestsPageProps) {
 
   // Filter logic based on user role
   const canSeeAllGuests = user.role === 'ADMIN' || user.role === 'STAFF';
+
+  const mapGuestFromDb = (row: any): Guest => ({
+    id: row.id,
+    name: row.guest_name || row.name,
+    phone: row.phone || undefined,
+    type: (row.guest_type || row.type || 'FREE') as Guest['type'],
+    status: (row.status || 'REGISTERED') as Guest['status'],
+    creatorId: row.created_by,
+    createdBy: row.created_by_profile?.display_name || row.created_by_profile?.username || row.created_by || '',
+    businessDate: row.business_date,
+    checkedInAt: row.checked_in_at || undefined
+  });
+
+  const fetchGuests = async () => {
+    try {
+      setLoading(true);
+      let query = supabase
+        .from(GUESTS_TABLE)
+        .select(`
+          *,
+          created_by_profile:profiles!guest_entries_created_by_fkey (
+            display_name,
+            username
+          )
+        `)
+        .eq('club_id', user.clubId)
+        .eq('business_date', businessDate)
+        .order('created_at', { ascending: false });
+
+      if (!canSeeAllGuests) {
+        query = query.eq('created_by', user.id);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      setGuests((data || []).map(mapGuestFromDb));
+    } catch (error) {
+      console.error('Error fetching guests:', error);
+      toast.error('게스트 목록을 불러오지 못했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchGuests();
+  }, [businessDate, user.clubId, user.username, user.role]);
   
   const filteredGuests = guests.filter((guest) => {
     const matchesDate = guest.businessDate === businessDate;
@@ -129,29 +118,46 @@ export function GuestsPage({ user }: GuestsPageProps) {
     const matchesType = filterType === 'ALL' ? true : guest.type === filterType;
     
     // DJ/PROMOTER/EXTERNAL_EVENT can only see their own guests
-    const matchesCreator = canSeeAllGuests ? true : guest.createdBy === user.username;
+    const matchesCreator = canSeeAllGuests ? true : guest.creatorId === user.id;
     
     return matchesDate && matchesSearch && matchesType && matchesCreator;
   });
 
-  const handleAddGuest = () => {
+  const handleAddGuest = async () => {
     if (!formName.trim()) {
       toast.error('이름을 입력해주세요');
       return;
     }
 
-    const newGuest: Guest = {
-      id: Date.now().toString(),
-      name: formName,
-      phone: formPhone || undefined,
-      type: formIsPaid ? 'PAID' : 'FREE',
-      status: 'REGISTERED',
-      createdBy: user.username,
-      businessDate
-    };
+    try {
+      const guestType = formIsPaid ? 'PAID' : 'FREE';
+      const payload = {
+        guest_name: formName.trim(),
+        phone: formPhone.trim() || null,
+        guest_type: guestType,
+        status: 'REGISTERED',
+        created_by: user.id,
+        club_id: user.clubId,
+        business_date: businessDate
+      };
 
-    setGuests([...guests, newGuest]);
-    toast.success('게스트가 등록되었습니다');
+      const { data, error } = await supabase
+        .from(GUESTS_TABLE)
+        .insert(payload)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        setGuests([mapGuestFromDb(data), ...guests]);
+      }
+      toast.success('게스트가 등록되었습니다');
+    } catch (error) {
+      console.error('Add guest error:', error);
+      toast.error('게스트 등록에 실패했습니다');
+      return;
+    }
     
     // Reset form
     setFormName('');
@@ -160,24 +166,59 @@ export function GuestsPage({ user }: GuestsPageProps) {
     setIsAddDialogOpen(false);
   };
 
-  const handleUpdateGuest = () => {
+  const handleUpdateGuest = async () => {
     if (!editingGuest || !formName.trim()) return;
 
-    setGuests(guests.map(g => 
-      g.id === editingGuest.id 
-        ? { ...g, name: formName, phone: formPhone || undefined, type: formIsPaid ? 'PAID' : 'FREE' }
-        : g
-    ));
-    toast.success('게스트 정보가 수정되었습니다');
-    setEditingGuest(null);
-    setFormName('');
-    setFormPhone('');
-    setFormIsPaid(false);
+    try {
+      const guestType = formIsPaid ? 'PAID' : 'FREE';
+      const { data, error } = await supabase
+        .from(GUESTS_TABLE)
+        .update({
+          guest_name: formName.trim(),
+          phone: formPhone.trim() || null,
+          guest_type: guestType
+        })
+        .eq('id', editingGuest.id)
+        .eq('club_id', user.clubId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        setGuests(guests.map(g =>
+          g.id === editingGuest.id
+            ? mapGuestFromDb(data)
+            : g
+        ));
+      }
+      toast.success('게스트 정보가 수정되었습니다');
+      setEditingGuest(null);
+      setFormName('');
+      setFormPhone('');
+      setFormIsPaid(false);
+    } catch (error) {
+      console.error('Update guest error:', error);
+      toast.error('수정에 실패했습니다');
+    }
   };
 
-  const handleDeleteGuest = (guestId: string) => {
-    setGuests(guests.filter(g => g.id !== guestId));
-    toast.success('게스트가 삭제되었습니다');
+  const handleDeleteGuest = async (guestId: string) => {
+    try {
+      const { error } = await supabase
+        .from(GUESTS_TABLE)
+        .delete()
+        .eq('id', guestId)
+        .eq('club_id', user.clubId);
+
+      if (error) throw error;
+
+      setGuests(guests.filter(g => g.id !== guestId));
+      toast.success('게스트가 삭제되었습니다');
+    } catch (error) {
+      console.error('Delete guest error:', error);
+      toast.error('삭제에 실패했습니다');
+    }
   };
 
   const openEditDialog = (guest: Guest) => {
@@ -330,7 +371,11 @@ export function GuestsPage({ user }: GuestsPageProps) {
 
       {/* Guest List */}
       <div className="space-y-2">
-        {filteredGuests.length === 0 ? (
+        {loading ? (
+          <Card className="p-12 text-center">
+            <p className="text-muted-foreground">게스트를 불러오는 중...</p>
+          </Card>
+        ) : filteredGuests.length === 0 ? (
           <Card className="p-12 text-center">
             <p className="text-muted-foreground">아직 등록된 게스트가 없어요</p>
           </Card>
@@ -350,7 +395,7 @@ export function GuestsPage({ user }: GuestsPageProps) {
                   </div>
                   <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
                     {guest.phone && <span>📞 {guest.phone}</span>}
-                    <span>등록: {guest.createdBy}</span>
+                    <span>등록한 사람: {guest.createdBy}</span>
                     {guest.checkedInAt && (
                       <span>입장: {format(new Date(guest.checkedInAt), 'HH:mm')}</span>
                     )}

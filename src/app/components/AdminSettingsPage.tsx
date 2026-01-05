@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { User } from '../App';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
@@ -6,16 +6,23 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Clock, Save, Info } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
+import { DEFAULT_CUTOFF_HOUR, DEFAULT_CUTOFF_MINUTE } from '@/lib/business-date';
 
 interface AdminSettingsPageProps {
   user: User;
 }
 
 export function AdminSettingsPage({ user }: AdminSettingsPageProps) {
-  const [cutoffHour, setCutoffHour] = useState('12');
-  const [cutoffMinute, setCutoffMinute] = useState('00');
+  const [cutoffHour, setCutoffHour] = useState(
+    DEFAULT_CUTOFF_HOUR.toString().padStart(2, '0'),
+  );
+  const [cutoffMinute, setCutoffMinute] = useState(
+    DEFAULT_CUTOFF_MINUTE.toString().padStart(2, '0'),
+  );
   const [timezone, setTimezone] = useState('Asia/Seoul');
   const [hasChanges, setHasChanges] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleCutoffChange = (hour: string, minute: string) => {
     setCutoffHour(hour);
@@ -23,11 +30,67 @@ export function AdminSettingsPage({ user }: AdminSettingsPageProps) {
     setHasChanges(true);
   };
 
-  const handleSave = () => {
-    toast.success('설정이 저장되었습니다', {
-      description: `저장 이후 체크인부터 적용됩니다. (컷오프 시간: ${cutoffHour}:${cutoffMinute})`
-    });
-    setHasChanges(false);
+  useEffect(() => {
+    let isMounted = true;
+    const loadSettings = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('clubs')
+          .select('cutoff_time')
+          .eq('id', user.clubId)
+          .single();
+
+        if (error) throw error;
+        if (!isMounted) return;
+
+        const cutoffTime = data?.cutoff_time as string | null | undefined;
+        const [hourText, minuteText] = cutoffTime ? cutoffTime.split(':') : [];
+        const hourValue = Number(hourText);
+        const minuteValue = Number(minuteText);
+        const nextHour = Number.isFinite(hourValue)
+          ? hourValue
+          : DEFAULT_CUTOFF_HOUR;
+        const nextMinute = Number.isFinite(minuteValue)
+          ? minuteValue
+          : DEFAULT_CUTOFF_MINUTE;
+
+        setCutoffHour(nextHour.toString().padStart(2, '0'));
+        setCutoffMinute(nextMinute.toString().padStart(2, '0'));
+        setHasChanges(false);
+      } catch (error) {
+        console.error('Error loading settings:', error);
+        toast.error('설정을 불러오는데 실패했습니다.');
+      }
+    };
+
+    loadSettings();
+    return () => {
+      isMounted = false;
+    };
+  }, [user.clubId]);
+
+  const handleSave = async () => {
+    try {
+      setIsSaving(true);
+      const { error } = await supabase
+        .from('clubs')
+        .update({
+          cutoff_time: `${cutoffHour}:${cutoffMinute}:00`,
+        })
+        .eq('id', user.clubId);
+
+      if (error) throw error;
+
+      toast.success('설정이 저장되었습니다', {
+        description: `저장 이후 체크인부터 적용됩니다. (컷오프 시간: ${cutoffHour}:${cutoffMinute})`,
+      });
+      setHasChanges(false);
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      toast.error('설정 저장에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
@@ -186,7 +249,7 @@ export function AdminSettingsPage({ user }: AdminSettingsPageProps) {
       <div className="flex justify-end">
         <Button 
           onClick={handleSave}
-          disabled={!hasChanges}
+          disabled={!hasChanges || isSaving}
           size="lg"
         >
           <Save className="w-4 h-4 mr-2" />

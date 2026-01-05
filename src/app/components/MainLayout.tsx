@@ -95,7 +95,7 @@ export function MainLayout({ user, onLogout }: MainLayoutProps) {
   return (
     <div className="min-h-screen bg-background">
       {/* Mobile Header */}
-      <div className="lg:hidden flex items-center justify-between p-4 border-b border-border/50 bg-sidebar backdrop-blur-sm sticky top-0 z-40">
+      <div className="lg:hidden flex items-center justify-between p-4 border-b border-border/50 bg-card backdrop-blur-sm sticky top-0 z-40">
         <div>
           <h1 className="font-semibold text-foreground">{user.clubName}</h1>
           <p className="text-xs text-muted-foreground">{user.displayName}</p>
@@ -111,7 +111,7 @@ export function MainLayout({ user, onLogout }: MainLayoutProps) {
 
       {/* Mobile Menu */}
       {mobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 bg-sidebar">
+        <div className="lg:hidden fixed inset-0 z-50 bg-card">
           <div className="p-4 border-b border-border/50 flex items-center justify-between">
             <h2 className="font-semibold">메뉴</h2>
             <Button
@@ -201,7 +201,7 @@ export function MainLayout({ user, onLogout }: MainLayoutProps) {
 
       <div className="lg:grid lg:grid-cols-[280px_1fr] lg:h-screen">
         {/* Desktop Sidebar */}
-        <aside className="hidden lg:flex flex-col border-r border-border bg-sidebar">
+        <aside className="hidden lg:flex flex-col border-r border-border bg-card">
           <div className="p-6 border-b border-border">
             <h1 className="text-xl font-semibold mb-1">{user.clubName}</h1>
             <p className="text-sm text-muted-foreground">{user.displayName}</p>
