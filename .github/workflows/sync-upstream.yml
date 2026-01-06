@@ -1,0 +1,25 @@
+name: Sync To Fork
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout upstream
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to fork
+        env:
+          GH_TOKEN: ${{ secrets.AUTO_ACTIONS }}
+        run: |
+          git remote add fork https://x-access-token:${GH_TOKEN}@github.com/sjk4618/Guestfe.git
+          git push fork main:main --force-with-lease
