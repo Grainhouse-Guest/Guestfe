@@ -22,4 +22,5 @@ jobs:
           GH_TOKEN: ${{ secrets.AUTO_ACTIONS }}
         run: |
           git remote add fork https://x-access-token:${GH_TOKEN}@github.com/sjk4618/Guestfe.git
-          git push fork main:main --force-with-lease
+          git fetch fork main:refs/remotes/fork/main
+          git push fork main:main --force-with-lease=refs/remotes/fork/main
