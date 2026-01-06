@@ -13,6 +13,7 @@ interface AdminSettingsPageProps {
   user: User;
 }
 
+
 export function AdminSettingsPage({ user }: AdminSettingsPageProps) {
   const [cutoffHour, setCutoffHour] = useState(
     DEFAULT_CUTOFF_HOUR.toString().padStart(2, '0'),
