@@ -25,7 +25,7 @@ jobs:
         with:
           source-directory: "output"
           destination-github-username: sjk4618
-          destination-repository-name: Guestfe
+          destination-repository-name: guest
           user-email: ${{ secrets.EMAIL }} # 이메일 대신 유저네임도 가능, 예: hosung77@users.noreply.github.com
           commit-message: ${{ github.event.head_commit.message }}"
           target-branch: main
