@@ -1,14 +1,12 @@
 import { useState } from 'react';
-import { User, UserRole } from '../App';
+import { User } from '../App';
 import { GuestsPage } from './GuestsPage';
 import { DoorPage } from './DoorPage';
 import { AdminDashboard } from './AdminDashboard';
 import { AdminStaffPage } from './AdminStaffPage';
 import { AdminSettingsPage } from './AdminSettingsPage';
 import { Button } from './ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Users, DoorOpen, LayoutDashboard, LogOut, Menu, X, UserCog } from 'lucide-react';
-import { Badge } from './ui/badge';
 
 interface MainLayoutProps {
   user: User;
@@ -20,57 +18,24 @@ type Page = 'guests' | 'door' | 'dashboard' | 'staff' | 'settings';
 export function MainLayout({ user, onLogout }: MainLayoutProps) {
   const [currentPage, setCurrentPage] = useState<Page>('guests');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [currentRole, setCurrentRole] = useState<UserRole>(user.role);
 
-  const canAccessDoor = currentRole === 'ADMIN' || currentRole === 'STAFF';
-  const canAccessAdmin = currentRole === 'ADMIN';
-
-  const handleRoleChange = (newRole: UserRole) => {
-    setCurrentRole(newRole);
-    // Reset to guests page if new role doesn't have access to current page
-    if (currentPage === 'door' && !(newRole === 'ADMIN' || newRole === 'STAFF')) {
-      setCurrentPage('guests');
-    }
-    if ((currentPage === 'dashboard' || currentPage === 'staff' || currentPage === 'settings') && newRole !== 'ADMIN') {
-      setCurrentPage('guests');
-    }
-  };
-
-  const getRoleBadgeVariant = (role: UserRole) => {
-    switch (role) {
-      case 'ADMIN': return 'default';
-      case 'STAFF': return 'secondary';
-      default: return 'outline';
-    }
-  };
-
-  const getRoleLabel = (role: UserRole) => {
-    switch (role) {
-      case 'ADMIN': return '관리자';
-      case 'STAFF': return '스태프';
-      case 'DJ': return 'DJ';
-      case 'PROMOTER': return '프로모터';
-      case 'EXTERNAL_EVENT': return '외부행사';
-    }
-  };
+  const canAccessDoor = user.role === 'ADMIN' || user.role === 'STAFF';
+  const canAccessAdmin = user.role === 'ADMIN';
 
   const renderPage = () => {
-    // Create a modified user object with current role
-    const modifiedUser = { ...user, role: currentRole };
-    
     switch (currentPage) {
       case 'guests':
-        return <GuestsPage user={modifiedUser} />;
+        return <GuestsPage user={user} />;
       case 'door':
-        return canAccessDoor ? <DoorPage user={modifiedUser} /> : <GuestsPage user={modifiedUser} />;
+        return canAccessDoor ? <DoorPage user={user} /> : <GuestsPage user={user} />;
       case 'dashboard':
-        return canAccessAdmin ? <AdminDashboard user={modifiedUser} /> : <GuestsPage user={modifiedUser} />;
+        return canAccessAdmin ? <AdminDashboard user={user} /> : <GuestsPage user={user} />;
       case 'staff':
-        return canAccessAdmin ? <AdminStaffPage user={modifiedUser} /> : <GuestsPage user={modifiedUser} />;
+        return canAccessAdmin ? <AdminStaffPage user={user} /> : <GuestsPage user={user} />;
       case 'settings':
-        return canAccessAdmin ? <AdminSettingsPage user={modifiedUser} /> : <GuestsPage user={modifiedUser} />;
+        return canAccessAdmin ? <AdminSettingsPage user={user} /> : <GuestsPage user={user} />;
       default:
-        return <GuestsPage user={modifiedUser} />;
+        return <GuestsPage user={user} />;
     }
   };
 
@@ -206,22 +171,6 @@ export function MainLayout({ user, onLogout }: MainLayoutProps) {
             <h1 className="text-xl font-semibold mb-1">{user.clubName}</h1>
             <p className="text-sm text-muted-foreground">{user.displayName}</p>
             
-            {/* Role Switcher for Demo */}
-            <div className="mt-6">
-              <label className="text-xs text-muted-foreground mb-2 block">데모 역할 전환</label>
-              <Select value={currentRole} onValueChange={(value) => handleRoleChange(value as UserRole)}>
-                <SelectTrigger className="h-9 bg-background/50">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ADMIN">관리자</SelectItem>
-                  <SelectItem value="STAFF">스태프</SelectItem>
-                  <SelectItem value="DJ">DJ</SelectItem>
-                  <SelectItem value="PROMOTER">프로모터</SelectItem>
-                  <SelectItem value="EXTERNAL_EVENT">외부행사</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </div>
 
           <nav className="flex-1 p-4 space-y-1">

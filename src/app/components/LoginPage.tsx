@@ -3,8 +3,6 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
-import { AlertCircle } from 'lucide-react';
-import { Users } from 'lucide-react';
 import { Eye, EyeOff } from 'lucide-react';
 
 interface LoginPageProps {
@@ -77,23 +75,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             </Button>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-border">
-            <p className="text-xs text-muted-foreground mb-3">데모 계정</p>
-            <div className="space-y-1.5 text-xs">
-              <div className="flex items-center justify-between px-3 py-2 rounded-md bg-accent/50">
-                <span className="text-muted-foreground">관리자</span>
-                <code className="text-foreground font-mono">admin</code>
-              </div>
-              <div className="flex items-center justify-between px-3 py-2 rounded-md bg-accent/50">
-                <span className="text-muted-foreground">스태프</span>
-                <code className="text-foreground font-mono">staff</code>
-              </div>
-              <div className="flex items-center justify-between px-3 py-2 rounded-md bg-accent/50">
-                <span className="text-muted-foreground">DJ</span>
-                <code className="text-foreground font-mono">dj</code>
-              </div>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>
