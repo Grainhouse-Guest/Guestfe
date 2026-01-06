@@ -85,6 +85,10 @@ export function AdminStaffPage({ user }: AdminStaffPageProps) {
     setShowPassword(false);
   };
 
+  const validateUsername = (value: string) => {
+    return /^[a-zA-Z0-9]+$/.test(value);
+  };
+
   const getAccessToken = async () => {
     const { data, error } = await supabase.auth.getSession();
     if (error) throw error;
@@ -159,6 +163,11 @@ export function AdminStaffPage({ user }: AdminStaffPageProps) {
       !formDisplayName.trim()
     ) {
       toast.error("모든 필수 항목을 입력해주세요");
+      return;
+    }
+
+    if (!validateUsername(formUsername.trim())) {
+      toast.error("아이디는 공백/한글/특수문자 없이 영문과 숫자만 가능합니다");
       return;
     }
 
@@ -359,6 +368,9 @@ export function AdminStaffPage({ user }: AdminStaffPageProps) {
                   value={formUsername}
                   onChange={(e) => setFormUsername(e.target.value)}
                 />
+                <p className="text-xs text-muted-foreground">
+                  아이디는 공백/한글/특수문자 없이 영문과 숫자만 가능합니다
+                </p>
               </div>
 
               <div className="space-y-2">

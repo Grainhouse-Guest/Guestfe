@@ -70,7 +70,11 @@ export function GuestsPage({ user }: GuestsPageProps) {
     type: (row.guest_type || row.type || 'FREE') as Guest['type'],
     status: (row.status || 'REGISTERED') as Guest['status'],
     creatorId: row.created_by,
-    createdBy: row.created_by_profile?.display_name || row.created_by_profile?.username || row.created_by || '',
+    createdBy:
+      row.created_by_profile?.display_name ||
+      row.created_by_profile?.username ||
+      (row.created_by === user.id ? user.displayName : row.created_by) ||
+      '',
     businessDate: row.business_date,
     checkedInAt: row.checked_in_at || undefined
   });
@@ -98,7 +102,7 @@ export function GuestsPage({ user }: GuestsPageProps) {
       const { data, error } = await query;
       if (error) throw error;
 
-      setGuests((data || []).map(mapGuestFromDb));
+        setGuests((data || []).map(mapGuestFromDb));
     } catch (error) {
       console.error('Error fetching guests:', error);
       toast.error('게스트 목록을 불러오지 못했습니다.');
