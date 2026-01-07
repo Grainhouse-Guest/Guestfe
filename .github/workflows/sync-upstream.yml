@@ -1,57 +1,30 @@
-name: Sync To Fork
+name: git push into another repo to deploy to vercel
 
 on:
   push:
-    branches: ["dev"]
-  workflow_dispatch:
-
-permissions:
-  contents: write
+    branches: [dev]
 
 jobs:
-  sync:
+  build:
     runs-on: ubuntu-latest
+    container: pandoc/latex
     steps:
-      - name: Checkout upstream
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v2
+      - name: Install mustache (to update the date)
+        run: apk add ruby && gem install mustache
+      - name: creates output
+        run: sh ./build.sh
+      - name: Pushes to another repository
+        id: push_directory
+        uses: cpina/github-action-push-to-another-repository@main
+        env:
+          API_TOKEN_GITHUB: ${{ secrets.AUTO_ACTIONS }}
         with:
-          fetch-depth: 0
-
-      - name: Check token access
-        env:
-          GH_TOKEN: ${{ secrets.AUTO_ACTIONS }}
-        run: |
-          curl -s -o /dev/null -w "%{http_code}\n" \
-            -H "Authorization: token ${GH_TOKEN}" \
-            https://api.github.com/repos/sjk4618/Guestfe
-
-      - name: Check token identity and permissions
-        env:
-          GH_TOKEN: ${{ secrets.AUTO_ACTIONS }}
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          import urllib.request
-          token = os.environ["GH_TOKEN"]
-          def fetch(url):
-            req = urllib.request.Request(
-              url,
-              headers={"Authorization": f"token {token}"}
-            )
-            with urllib.request.urlopen(req) as res:
-              return json.loads(res.read().decode("utf-8"))
-          user = fetch("https://api.github.com/user")
-          repo = fetch("https://api.github.com/repos/sjk4618/Guestfe")
-          print("token_user:", user.get("login"))
-          print("repo_full_name:", repo.get("full_name"))
-          print("repo_permissions:", repo.get("permissions"))
-          PY
-
-      - name: Push to fork
-        env:
-          GH_TOKEN: ${{ secrets.AUTO_ACTIONS }}
-        run: |
-          git remote add fork https://x-access-token:${GH_TOKEN}@github.com/sjk4618/Guestfe.git
-          git fetch fork dev:refs/remotes/fork/dev
-          git push fork dev:dev --force-with-lease=refs/remotes/fork/dev
+          source-directory: "output"
+          destination-github-username: sjk4618
+          destination-repository-name: Guestfe
+          user-email: ${{ secrets.EMAIL }}
+          commit-message: ${{ github.event.commits[0].message }}
+          target-branch: dev
+      - name: Test get variable exported by push-to-another-repository
+        run: echo $DESTINATION_CLONED_DIRECTORY
