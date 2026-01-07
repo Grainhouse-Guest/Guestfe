@@ -17,6 +17,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check token access
+        env:
+          GH_TOKEN: ${{ secrets.AUTO_ACTIONS }}
+        run: |
+          curl -s -o /dev/null -w "%{http_code}\n" \
+            -H "Authorization: token ${GH_TOKEN}" \
+            https://api.github.com/repos/sjk4618/Guestfe
+
       - name: Push to fork
         env:
           GH_TOKEN: ${{ secrets.AUTO_ACTIONS }}
