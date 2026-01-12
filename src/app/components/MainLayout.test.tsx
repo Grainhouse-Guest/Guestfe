@@ -33,6 +33,7 @@ const buildUser = (role: 'ADMIN' | 'STAFF', clubImageUrl: string | null = 'https
   clubImageUrl,
   cutoffHour: 0,
   cutoffMinute: 0,
+  dailyGuestLimit: null,
   isActive: true,
 })
 

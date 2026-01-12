@@ -29,6 +29,7 @@ const buildUser = () => ({
   clubImageUrl: 'https://example.com/logo.png',
   cutoffHour: 0,
   cutoffMinute: 0,
+  dailyGuestLimit: null,
   isActive: true,
 })
 

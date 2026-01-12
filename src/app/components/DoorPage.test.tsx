@@ -37,6 +37,7 @@ const buildUser = () => ({
   clubImageUrl: null,
   cutoffHour: 0,
   cutoffMinute: 0,
+  dailyGuestLimit: null,
   isActive: true,
 })
 

@@ -22,6 +22,7 @@ export interface User {
   clubImageUrl: string | null;
   cutoffHour: number;
   cutoffMinute: number;
+  dailyGuestLimit: number | null;
   isActive: boolean;
   startDate?: string;
   endDate?: string;
@@ -153,6 +154,17 @@ function App() {
           typeof clubs?.logo_url === 'string' && clubs.logo_url.trim().length > 0
             ? clubs.logo_url
             : null;
+        const rawDailyLimit = profile.daily_guest_limit as number | string | null | undefined;
+        const parsedDailyLimit =
+          typeof rawDailyLimit === 'number'
+            ? rawDailyLimit
+            : typeof rawDailyLimit === 'string'
+              ? Number(rawDailyLimit)
+              : null;
+        const dailyGuestLimit =
+          Number.isFinite(parsedDailyLimit) && parsedDailyLimit >= 0
+            ? Math.trunc(parsedDailyLimit)
+            : null;
 
         const nextUser: User = {
           id: profile.user_id,
@@ -165,6 +177,7 @@ function App() {
           clubImageUrl,
           cutoffHour,
           cutoffMinute,
+          dailyGuestLimit,
           isActive: profile.is_active,
           startDate: accessStart,
           endDate: accessEnd
