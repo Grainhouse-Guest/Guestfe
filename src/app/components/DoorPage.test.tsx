@@ -34,6 +34,7 @@ const buildUser = () => ({
   clubId: 'club-1',
   clubName: 'Club',
   clubSlug: 'club',
+  clubImageUrl: null,
   cutoffHour: 0,
   cutoffMinute: 0,
   isActive: true,
