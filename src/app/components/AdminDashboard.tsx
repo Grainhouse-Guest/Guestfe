@@ -6,12 +6,13 @@ import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
-import { Calendar as CalendarIcon, TrendingUp, Users, CheckCircle, Percent } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
+import { Calendar as CalendarIcon, TrendingUp, TrendingDown, Users, CheckCircle, Percent } from 'lucide-react';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, subDays, differenceInDays } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
+import { getDayChar } from '@/lib/date-utils';
 
 interface AdminDashboardProps {
   user: User;
@@ -24,11 +25,12 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
   const [quickRange, setQuickRange] = useState('today');
   const [loading, setLoading] = useState(false);
   const [entries, setEntries] = useState<any[]>([]);
+  const [lastWeekEntries, setLastWeekEntries] = useState<any[]>([]);
 
   const handleQuickRange = (range: string) => {
     setQuickRange(range);
     const today = new Date();
-    
+
     switch (range) {
       case 'today':
         setDateFrom(today);
@@ -51,29 +53,47 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
         const startDate = format(dateFrom, 'yyyy-MM-dd');
         const endDate = format(dateTo, 'yyyy-MM-dd');
 
-        const { data, error } = await supabase
-          .from('guest_entries')
-          .select(
-            `
-            id,
-            status,
-            guest_type,
-            business_date,
-            checked_in_at,
-            created_by,
-            created_by_profile:profiles!guest_entries_created_by_fkey (
-              display_name,
-              username
+        // Calculate last week's date range (same duration, shifted back by the duration + 1 day)
+        const rangeDays = differenceInDays(dateTo, dateFrom);
+        const lastWeekEnd = subDays(dateFrom, 1);
+        const lastWeekStart = subDays(lastWeekEnd, rangeDays);
+        const lastWeekStartDate = format(lastWeekStart, 'yyyy-MM-dd');
+        const lastWeekEndDate = format(lastWeekEnd, 'yyyy-MM-dd');
+
+        // Fetch current period and last week data in parallel
+        const [currentResult, lastWeekResult] = await Promise.all([
+          supabase
+            .from('guest_entries')
+            .select(
+              `
+              id,
+              status,
+              guest_type,
+              business_date,
+              checked_in_at,
+              created_by,
+              created_by_profile:profiles!guest_entries_created_by_fkey (
+                display_name,
+                username
+              )
+            `,
             )
-          `,
-          )
-          .eq('club_id', user.clubId)
-          .gte('business_date', startDate)
-          .lte('business_date', endDate);
+            .eq('club_id', user.clubId)
+            .gte('business_date', startDate)
+            .lte('business_date', endDate),
+          supabase
+            .from('guest_entries')
+            .select('id, status')
+            .eq('club_id', user.clubId)
+            .gte('business_date', lastWeekStartDate)
+            .lte('business_date', lastWeekEndDate),
+        ]);
 
-        if (error) throw error;
+        if (currentResult.error) throw currentResult.error;
+        if (lastWeekResult.error) throw lastWeekResult.error;
 
-        setEntries(data || []);
+        setEntries(currentResult.data || []);
+        setLastWeekEntries(lastWeekResult.data || []);
       } catch (error) {
         console.error('Error fetching dashboard:', error);
         toast.error('대시보드 데이터를 불러오지 못했습니다.');
@@ -96,6 +116,29 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
 
     return { totalRegistered, totalCheckedIn, checkInRate, freeGuests, paidGuests };
   }, [entries]);
+
+  const weeklyComparison = useMemo(() => {
+    // Calculate comparison period dates
+    const rangeDays = differenceInDays(dateTo, dateFrom);
+    const lastWeekEnd = subDays(dateFrom, 1);
+    const lastWeekStart = subDays(lastWeekEnd, rangeDays);
+    const comparisonPeriod = `${format(lastWeekStart, 'MM/dd')}~${format(lastWeekEnd, 'MM/dd')}`;
+
+    if (lastWeekEntries.length === 0) {
+      return { diff: null, isPositive: true, hasData: false, comparisonPeriod };
+    }
+    const lastWeekTotal = lastWeekEntries.length;
+    const lastWeekCheckedIn = lastWeekEntries.filter((e) => e.status === 'CHECKED_IN').length;
+    const lastWeekRate = lastWeekTotal ? (lastWeekCheckedIn / lastWeekTotal) * 100 : 0;
+
+    const diff = kpiData.checkInRate - lastWeekRate;
+    return {
+      diff: Number(diff.toFixed(1)),
+      isPositive: diff >= 0,
+      hasData: true,
+      comparisonPeriod,
+    };
+  }, [kpiData.checkInRate, lastWeekEntries, dateFrom, dateTo]);
 
   const hourlyData = useMemo(() => {
     const startHour = 21;
@@ -133,7 +176,7 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
       const registered = dayEntries.length;
       const checkedIn = dayEntries.filter((entry) => entry.status === 'CHECKED_IN').length;
       return {
-        date: format(day, 'MM/dd'),
+        date: `${format(day, 'MM/dd')}(${getDayChar(day)})`,
         registered,
         checkedIn,
       };
@@ -165,12 +208,62 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
       .sort((a, b) => b.registered - a.registered);
   }, [entries]);
 
+  const escapeCsvValue = (value: string | number | null | undefined) => {
+    if (value === null || value === undefined) return '';
+    const text = String(value);
+    if (/[",\n]/.test(text)) {
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+    return text;
+  };
+
+  const downloadCsv = () => {
+    const fromLabel = format(dateFrom, 'yyyy-MM-dd');
+    const toLabel = format(dateTo, 'yyyy-MM-dd');
+    const rows: string[][] = [];
+
+    rows.push(['클럽', user.clubName]);
+    rows.push(['기간', `${fromLabel} ~ ${toLabel}`]);
+    rows.push(['생성 시각', format(new Date(), 'yyyy-MM-dd HH:mm:ss')]);
+    rows.push([]);
+    rows.push(['요약', '값']);
+    rows.push(['총 등록', kpiData.totalRegistered]);
+    rows.push(['총 입장', kpiData.totalCheckedIn]);
+    rows.push(['입장률(%)', kpiData.checkInRate]);
+    rows.push(['무료 게스트', kpiData.freeGuests]);
+    rows.push(['유료 게스트', kpiData.paidGuests]);
+    rows.push([]);
+    rows.push(['생성자별 통계', '', '', '']);
+    rows.push(['이름', '등록', '입장', '입장률(%)']);
+    creatorData.forEach((creator) => {
+      rows.push([creator.name, creator.registered, creator.checkedIn, creator.rate]);
+    });
+
+    const csv = rows
+      .map((row) => row.map((cell) => escapeCsvValue(cell)).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${user.clubName}_${fromLabel}_${toLabel}_dashboard.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="p-4 lg:p-8 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl mb-2">대시보드</h1>
-        <p className="text-muted-foreground">게스트 통계와 분석을 확인하세요</p>
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl mb-2">대시보드</h1>
+          <p className="text-muted-foreground">게스트 통계와 분석을 확인하세요</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={downloadCsv}>
+          CSV 다운로드
+        </Button>
       </div>
 
       {/* Date Range Selector */}
@@ -266,10 +359,18 @@ export function AdminDashboard({ user }: AdminDashboardProps) {
             <Percent className="w-5 h-5 text-purple-500" />
           </div>
           <div className="text-3xl mb-1">{kpiData.checkInRate}%</div>
-          <div className="text-xs text-green-600 flex items-center">
-            <TrendingUp className="w-3 h-3 mr-1" />
-            +5.2% vs 지난주
-          </div>
+          {weeklyComparison.hasData ? (
+            <div className={`text-xs flex items-center ${weeklyComparison.isPositive ? 'text-green-600' : 'text-red-500'}`}>
+              {weeklyComparison.isPositive ? (
+                <TrendingUp className="w-3 h-3 mr-1" />
+              ) : (
+                <TrendingDown className="w-3 h-3 mr-1" />
+              )}
+              {weeklyComparison.isPositive ? '+' : ''}{weeklyComparison.diff}% vs {weeklyComparison.comparisonPeriod}
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground">비교 데이터 없음</div>
+          )}
         </Card>
 
         <Card className="p-6">

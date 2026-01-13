@@ -14,6 +14,7 @@ import { ChevronLeft, ChevronRight, Plus, Search, Edit, Trash2, Calendar as Cale
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { getDayChar } from '@/lib/date-utils';
 import {
   DEFAULT_CUTOFF_HOUR,
   DEFAULT_CUTOFF_MINUTE,
@@ -102,7 +103,7 @@ export function GuestsPage({ user }: GuestsPageProps) {
       const { data, error } = await query;
       if (error) throw error;
 
-        setGuests((data || []).map(mapGuestFromDb));
+      setGuests((data || []).map(mapGuestFromDb));
     } catch (error) {
       console.error('Error fetching guests:', error);
       toast.error('게스트 목록을 불러오지 못했습니다.');
@@ -114,18 +115,48 @@ export function GuestsPage({ user }: GuestsPageProps) {
   useEffect(() => {
     fetchGuests();
   }, [businessDate, user.clubId, user.username, user.role]);
-  
+
   const filteredGuests = guests.filter((guest) => {
     const matchesDate = guest.businessDate === businessDate;
     const matchesSearch = guest.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (guest.phone && guest.phone.includes(searchQuery));
     const matchesType = filterType === 'ALL' ? true : guest.type === filterType;
-    
+
     // DJ/PROMOTER/EXTERNAL_EVENT can only see their own guests
     const matchesCreator = canSeeAllGuests ? true : guest.creatorId === user.id;
-    
+
     return matchesDate && matchesSearch && matchesType && matchesCreator;
   });
+
+  const isDailyLimitExceededError = (error: unknown) => {
+    const message = typeof (error as { message?: unknown })?.message === 'string'
+      ? (error as { message: string }).message
+      : '';
+    return message.includes('daily_guest_limit_exceeded');
+  };
+
+  const isCreatedByMismatchError = (error: unknown) => {
+    const message = typeof (error as { message?: unknown })?.message === 'string'
+      ? (error as { message: string }).message
+      : '';
+    return message.includes('created_by_mismatch');
+  };
+
+  const fetchCreatedCount = async () => {
+    const { count, error } = await supabase
+      .from(GUESTS_TABLE)
+      .select('id', { count: 'exact', head: true })
+      .eq('club_id', user.clubId)
+      .eq('business_date', businessDate)
+      .eq('created_by', user.id);
+
+    if (error || typeof count !== 'number') {
+      console.error('Error counting guests:', error);
+      throw new Error('daily_limit_check_failed');
+    }
+
+    return count;
+  };
 
   const handleAddGuest = async () => {
     if (!formName.trim()) {
@@ -134,6 +165,21 @@ export function GuestsPage({ user }: GuestsPageProps) {
     }
 
     try {
+      if (user.role !== 'ADMIN' && user.dailyGuestLimit !== null) {
+        let currentCount = 0;
+        try {
+          currentCount = await fetchCreatedCount();
+        } catch {
+          toast.error('등록 가능 인원을 확인하지 못했습니다. 잠시 후 다시 시도해주세요.');
+          return;
+        }
+
+        if (currentCount >= user.dailyGuestLimit) {
+          toast.error(`하루 등록 가능 인원(${user.dailyGuestLimit}명)을 초과할 수 없습니다.`);
+          return;
+        }
+      }
+
       const guestType = formIsPaid ? 'PAID' : 'FREE';
       const payload = {
         guest_name: formName.trim(),
@@ -159,10 +205,21 @@ export function GuestsPage({ user }: GuestsPageProps) {
       toast.success('게스트가 등록되었습니다');
     } catch (error) {
       console.error('Add guest error:', error);
+      if (isDailyLimitExceededError(error)) {
+        const limitLabel = user.dailyGuestLimit === null
+          ? '하루 등록 가능 인원을 초과할 수 없습니다.'
+          : `하루 등록 가능 인원(${user.dailyGuestLimit}명)을 초과할 수 없습니다.`;
+        toast.error(limitLabel);
+        return;
+      }
+      if (isCreatedByMismatchError(error)) {
+        toast.error('등록자 정보가 올바르지 않습니다.');
+        return;
+      }
       toast.error('게스트 등록에 실패했습니다');
       return;
     }
-    
+
     // Reset form
     setFormName('');
     setFormPhone('');
@@ -258,12 +315,12 @@ export function GuestsPage({ user }: GuestsPageProps) {
             >
               <ChevronLeft className="w-4 h-4" />
             </Button>
-            
+
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" className="min-w-[200px]">
                   <CalendarIcon className="w-4 h-4 mr-2" />
-                  {format(selectedDate, 'PPP', { locale: ko })}
+                  {format(selectedDate, 'PPP', { locale: ko })}({getDayChar(selectedDate)})
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
@@ -394,7 +451,7 @@ export function GuestsPage({ user }: GuestsPageProps) {
                       {guest.type === 'FREE' ? '무료' : '유료'}
                     </Badge>
                     <Badge variant={guest.status === 'CHECKED_IN' ? 'checked' : 'registered'}>
-                      {guest.status === 'CHECKED_IN' ? '입장완료' : '등록'}
+                      {guest.status === 'CHECKED_IN' ? '입장완료' : '입장 전'}
                     </Badge>
                   </div>
                   <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
@@ -411,6 +468,7 @@ export function GuestsPage({ user }: GuestsPageProps) {
                       <Button
                         variant="outline"
                         size="sm"
+                        aria-label="게스트 수정"
                         onClick={() => openEditDialog(guest)}
                       >
                         <Edit className="w-4 h-4" />
@@ -418,6 +476,7 @@ export function GuestsPage({ user }: GuestsPageProps) {
                       <Button
                         variant="outline"
                         size="sm"
+                        aria-label="게스트 삭제"
                         onClick={() => handleDeleteGuest(guest.id)}
                       >
                         <Trash2 className="w-4 h-4 text-destructive" />
