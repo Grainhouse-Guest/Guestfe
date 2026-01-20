@@ -5,3 +5,5 @@ dist
 .DS_Store
 supabase
 AGENTS.md
+.AGENTS
+Guestfe/.agents
