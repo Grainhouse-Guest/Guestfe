@@ -18,9 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Search,
-  Calendar as CalendarIcon,
   CheckCircle2,
-  Undo2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -65,6 +63,10 @@ export function DoorPage({ user }: DoorPageProps) {
   const [cancelGuest, setCancelGuest] = useState<Guest | null>(null);
   const [guests, setGuests] = useState<Guest[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Loading states for buttons
+  const [isCheckingIn, setIsCheckingIn] = useState(false);
+  const [isCancellingCheckIn, setIsCancellingCheckIn] = useState(false);
 
   const businessDate = format(selectedDate, "yyyy-MM-dd");
 
@@ -146,6 +148,8 @@ export function DoorPage({ user }: DoorPageProps) {
   const confirmCancelCheckIn = async () => {
     if (!cancelGuest) return;
 
+    setIsCancellingCheckIn(true);
+
     try {
       const { data, error } = await supabase
         .from(GUESTS_TABLE)
@@ -184,12 +188,15 @@ export function DoorPage({ user }: DoorPageProps) {
       console.error("Cancel check-in error:", error);
       toast.error("입장 취소에 실패했습니다");
     } finally {
+      setIsCancellingCheckIn(false);
       setCancelGuest(null);
     }
   };
 
   const confirmCheckIn = async () => {
     if (!confirmGuest) return;
+
+    setIsCheckingIn(true);
 
     try {
       const checkedInAt = new Date().toISOString();
@@ -230,6 +237,7 @@ export function DoorPage({ user }: DoorPageProps) {
       console.error("Check-in error:", error);
       toast.error("입장 처리에 실패했습니다");
     } finally {
+      setIsCheckingIn(false);
       setConfirmGuest(null);
       setSearchQuery("");
     }
@@ -288,7 +296,6 @@ export function DoorPage({ user }: DoorPageProps) {
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" className="min-w-[200px]">
-                  <CalendarIcon className="w-4 h-4 mr-2" />
                   {format(selectedDate, "PPP", { locale: ko })}({getDayChar(selectedDate)})
                 </Button>
               </PopoverTrigger>
@@ -402,7 +409,6 @@ export function DoorPage({ user }: DoorPageProps) {
                         onClick={() => handleCheckIn(guest)}
                         className="min-w-[120px]"
                       >
-                        <CheckCircle2 className="w-5 h-5 mr-2" />
                         입장
                       </Button>
                     ) : (
@@ -417,7 +423,6 @@ export function DoorPage({ user }: DoorPageProps) {
                           onClick={() => handleCancelCheckIn(guest)}
                           className="min-w-[120px] text-destructive border-destructive hover:bg-destructive/10"
                         >
-                          <Undo2 className="w-5 h-5 mr-2" />
                           입장 취소
                         </Button>
                       </>
@@ -463,10 +468,12 @@ export function DoorPage({ user }: DoorPageProps) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmGuest(null)}>
+            <Button variant="outline" onClick={() => setConfirmGuest(null)} disabled={isCheckingIn}>
               취소
             </Button>
-            <Button onClick={confirmCheckIn}>확인</Button>
+            <Button onClick={confirmCheckIn} isLoading={isCheckingIn} loadingText="입장 처리 중...">
+              확인
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -512,10 +519,10 @@ export function DoorPage({ user }: DoorPageProps) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCancelGuest(null)}>
+            <Button variant="outline" onClick={() => setCancelGuest(null)} disabled={isCancellingCheckIn}>
               아니오
             </Button>
-            <Button variant="destructive" onClick={confirmCancelCheckIn}>
+            <Button variant="destructive" onClick={confirmCancelCheckIn} isLoading={isCancellingCheckIn} loadingText="취소 중...">
               입장 취소
             </Button>
           </DialogFooter>

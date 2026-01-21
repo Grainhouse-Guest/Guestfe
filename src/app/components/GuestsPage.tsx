@@ -10,7 +10,7 @@ import { Calendar } from './ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { Switch } from './ui/switch';
 import { supabase } from '@/lib/supabase';
-import { ChevronLeft, ChevronRight, Plus, Search, Edit, Trash2, Calendar as CalendarIcon, Filter } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, Edit, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -53,6 +53,11 @@ export function GuestsPage({ user }: GuestsPageProps) {
   const [loading, setLoading] = useState(false);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingGuest, setEditingGuest] = useState<Guest | null>(null);
+
+  // Loading states for buttons
+  const [isAdding, setIsAdding] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Form state
   const [formName, setFormName] = useState('');
@@ -164,6 +169,8 @@ export function GuestsPage({ user }: GuestsPageProps) {
       return;
     }
 
+    setIsAdding(true);
+
     try {
       if (user.role !== 'ADMIN' && user.dailyGuestLimit !== null) {
         let currentCount = 0;
@@ -218,6 +225,8 @@ export function GuestsPage({ user }: GuestsPageProps) {
       }
       toast.error('게스트 등록에 실패했습니다');
       return;
+    } finally {
+      setIsAdding(false);
     }
 
     // Reset form
@@ -229,6 +238,8 @@ export function GuestsPage({ user }: GuestsPageProps) {
 
   const handleUpdateGuest = async () => {
     if (!editingGuest || !formName.trim()) return;
+
+    setIsUpdating(true);
 
     try {
       const guestType = formIsPaid ? 'PAID' : 'FREE';
@@ -261,10 +272,13 @@ export function GuestsPage({ user }: GuestsPageProps) {
     } catch (error) {
       console.error('Update guest error:', error);
       toast.error('수정에 실패했습니다');
+    } finally {
+      setIsUpdating(false);
     }
   };
 
   const handleDeleteGuest = async (guestId: string) => {
+    setDeletingId(guestId);
     try {
       const { error } = await supabase
         .from(GUESTS_TABLE)
@@ -279,6 +293,8 @@ export function GuestsPage({ user }: GuestsPageProps) {
     } catch (error) {
       console.error('Delete guest error:', error);
       toast.error('삭제에 실패했습니다');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -319,7 +335,6 @@ export function GuestsPage({ user }: GuestsPageProps) {
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" className="min-w-[200px]">
-                  <CalendarIcon className="w-4 h-4 mr-2" />
                   {format(selectedDate, 'PPP', { locale: ko })}({getDayChar(selectedDate)})
                 </Button>
               </PopoverTrigger>
@@ -346,22 +361,21 @@ export function GuestsPage({ user }: GuestsPageProps) {
           <div className="flex gap-2">
             <Button
               variant={filterType === 'ALL' ? 'default' : 'outline'}
-              size="sm"
+              size="default"
               onClick={() => setFilterType('ALL')}
             >
-              <Filter className="w-4 h-4 mr-2" />
               전체
             </Button>
             <Button
               variant={filterType === 'FREE' ? 'default' : 'outline'}
-              size="sm"
+              size="default"
               onClick={() => setFilterType('FREE')}
             >
               무료
             </Button>
             <Button
               variant={filterType === 'PAID' ? 'default' : 'outline'}
-              size="sm"
+              size="default"
               onClick={() => setFilterType('PAID')}
             >
               유료
@@ -383,7 +397,6 @@ export function GuestsPage({ user }: GuestsPageProps) {
           <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
             <DialogTrigger asChild>
               <Button>
-                <Plus className="w-4 h-4 mr-2" />
                 게스트 추가
               </Button>
             </DialogTrigger>
@@ -420,10 +433,12 @@ export function GuestsPage({ user }: GuestsPageProps) {
                 </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={isAdding}>
                   취소
                 </Button>
-                <Button onClick={handleAddGuest}>등록</Button>
+                <Button onClick={handleAddGuest} isLoading={isAdding} loadingText="등록 중...">
+                  등록
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -470,6 +485,7 @@ export function GuestsPage({ user }: GuestsPageProps) {
                         size="sm"
                         aria-label="게스트 수정"
                         onClick={() => openEditDialog(guest)}
+                        disabled={deletingId === guest.id}
                       >
                         <Edit className="w-4 h-4" />
                       </Button>
@@ -478,6 +494,7 @@ export function GuestsPage({ user }: GuestsPageProps) {
                         size="sm"
                         aria-label="게스트 삭제"
                         onClick={() => handleDeleteGuest(guest.id)}
+                        isLoading={deletingId === guest.id}
                       >
                         <Trash2 className="w-4 h-4 text-destructive" />
                       </Button>
@@ -530,10 +547,12 @@ export function GuestsPage({ user }: GuestsPageProps) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingGuest(null)}>
+            <Button variant="outline" onClick={() => setEditingGuest(null)} disabled={isUpdating}>
               취소
             </Button>
-            <Button onClick={handleUpdateGuest}>수정</Button>
+            <Button onClick={handleUpdateGuest} isLoading={isUpdating} loadingText="수정 중...">
+              수정
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
